@@ -16,24 +16,4 @@
   <!-- Targets -->
   <target name="release" depends="release.app" description="Release"/>
 
-  <target name="prepare" depends="load.lib.asar">
-    <echo message="Preparing release..."/>
-
-    <echo message="Extracting embedded ${atf.arch} archive"/>
-    <property name="extract.path2" value="${tmp.path}\extract2"/>
-    <if>
-      <equals arg1="${atf.arch}" arg2="win32"/>
-      <then>
-        <sevenzip-ax src="${extract.path}\$PLUGINSDIR\app-32.7z" dest="${extract.path2}"/>
-      </then>
-      <else>
-        <sevenzip-ax src="${extract.path}\$PLUGINSDIR\app-64.7z" dest="${extract.path2}"/>
-      </else>
-    </if>
-    <delete dir="${extract.path}"/>
-    <move todir="${extract.path}">
-      <fileset dir="${extract.path2}" defaultexcludes="no"/>
-    </move>
-  </target>
-
 </project>
