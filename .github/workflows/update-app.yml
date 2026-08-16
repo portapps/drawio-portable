@@ -61,7 +61,7 @@ jobs:
               repo: 'drawio-desktop'
             };
             const sourceUrl = `https://github.com/${upstream.owner}/${upstream.repo}/releases`;
-            const archivePattern = /^draw\.io-(\d+\.\d+\.\d+)-windows\.zip$/;
+            const archivePattern = /^draw\.io-(\d+\.\d+\.\d+)-windows-no-installer\.exe$/;
 
             function workspacePath(relativePath) {
               return path.join(process.env.GITHUB_WORKSPACE, relativePath);
@@ -89,7 +89,7 @@ jobs:
               if (!pattern.test(content)) {
                 throw new Error(`Missing ${name} in build.properties`);
               }
-              return content.replace(pattern, `$1${value}`);
+              return content.replace(pattern, (_, prefix) => `${prefix}${value}`);
             }
 
             function versionParts(version) {
@@ -149,14 +149,14 @@ jobs:
               });
               const candidates = releases.map(candidateFromRelease).filter(Boolean);
               if (candidates.length === 0) {
-                throw new Error(`No stable Windows draw.io archives found in ${sourceUrl}`);
+                throw new Error(`No stable Windows no-installer draw.io executables found in ${sourceUrl}`);
               }
               candidates.sort(compareCandidates);
               return candidates.at(-1);
             }
 
             const latest = await latestStableArchive();
-            core.info(`Resolved latest stable draw.io archive: ${JSON.stringify(latest)}`);
+            core.info(`Resolved latest stable draw.io no-installer executable: ${JSON.stringify(latest)}`);
 
             const relativePath = 'build.properties';
             const currentContent = readFile(relativePath);
@@ -169,7 +169,9 @@ jobs:
             let updatedContent = currentContent;
             updatedContent = replaceProperty(updatedContent, 'app.version', latest.version);
             const versionChanged = updatedContent !== currentContent;
-            updatedContent = replaceProperty(updatedContent, 'atf.win64.url', latest.downloadUrl);
+            updatedContent = replaceProperty(updatedContent, 'atf.win64.ext', '.exe');
+            updatedContent = replaceProperty(updatedContent, 'atf.win64.url', 'https://github.com/jgraph/drawio-desktop/releases/download/v${app.version}/draw.io-${app.version}-windows-no-installer.exe');
+            updatedContent = replaceProperty(updatedContent, 'atf.win64.assertextract', '$PLUGINSDIR/app-64.7z');
             const nextRelease = versionChanged ? currentRelease + 1 : currentRelease;
             updatedContent = replaceProperty(updatedContent, 'app.release', String(nextRelease));
 
