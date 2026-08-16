@@ -14,9 +14,14 @@ on:
   push:
     branches:
       - 'master'
+  pull_request:
+    paths:
+      - '.github/workflows/update-app.yml'
+      - 'build.properties'
 
 jobs:
   update:
+    if: github.event_name != 'pull_request'
     runs-on: windows-latest
     environment: update-app # secrets are gated by this environment
     timeout-minutes: 10
@@ -47,7 +52,7 @@ jobs:
         id: update
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
-          script: |
+          script: &update-script |
             const fs = require('fs');
             const path = require('path');
 
@@ -56,7 +61,7 @@ jobs:
               repo: 'drawio-desktop'
             };
             const sourceUrl = `https://github.com/${upstream.owner}/${upstream.repo}/releases`;
-            const archivePattern = /^draw\.io-(\d+\.\d+\.\d+)-windows\.zip$/;
+            const archivePattern = /^draw\.io-(\d+\.\d+\.\d+)-windows-no-installer\.exe$/;
 
             function workspacePath(relativePath) {
               return path.join(process.env.GITHUB_WORKSPACE, relativePath);
@@ -84,7 +89,7 @@ jobs:
               if (!pattern.test(content)) {
                 throw new Error(`Missing ${name} in build.properties`);
               }
-              return content.replace(pattern, `$1${value}`);
+              return content.replace(pattern, (_, prefix) => `${prefix}${value}`);
             }
 
             function versionParts(version) {
@@ -144,14 +149,14 @@ jobs:
               });
               const candidates = releases.map(candidateFromRelease).filter(Boolean);
               if (candidates.length === 0) {
-                throw new Error(`No stable Windows draw.io archives found in ${sourceUrl}`);
+                throw new Error(`No stable Windows no-installer draw.io executables found in ${sourceUrl}`);
               }
               candidates.sort(compareCandidates);
               return candidates.at(-1);
             }
 
             const latest = await latestStableArchive();
-            core.info(`Resolved latest stable draw.io archive: ${JSON.stringify(latest)}`);
+            core.info(`Resolved latest stable draw.io no-installer executable: ${JSON.stringify(latest)}`);
 
             const relativePath = 'build.properties';
             const currentContent = readFile(relativePath);
@@ -164,7 +169,9 @@ jobs:
             let updatedContent = currentContent;
             updatedContent = replaceProperty(updatedContent, 'app.version', latest.version);
             const versionChanged = updatedContent !== currentContent;
-            updatedContent = replaceProperty(updatedContent, 'atf.win64.url', latest.downloadUrl);
+            updatedContent = replaceProperty(updatedContent, 'atf.win64.ext', '.exe');
+            updatedContent = replaceProperty(updatedContent, 'atf.win64.url', 'https://github.com/jgraph/drawio-desktop/releases/download/v${app.version}/draw.io-${app.version}-windows-no-installer.exe');
+            updatedContent = replaceProperty(updatedContent, 'atf.win64.assertextract', '$PLUGINSDIR/app-64.7z');
             const nextRelease = versionChanged ? currentRelease + 1 : currentRelease;
             updatedContent = replaceProperty(updatedContent, 'app.release', String(nextRelease));
 
@@ -193,3 +200,33 @@ jobs:
           delete-branch: true
           body: |
             This updates draw.io to ${{ steps.update.outputs.version }}.
+
+  diff:
+    if: github.event_name == 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # same as global permissions
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      -
+        name: Update draw.io
+        id: update
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: *update-script
+      -
+        name: Show diff
+        shell: pwsh
+        run: |
+          $diff = git --no-pager diff -- build.properties
+          if ($diff) {
+            $diff
+          } else {
+            Write-Host "No update diff."
+          }
